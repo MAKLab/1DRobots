@@ -13,10 +13,15 @@
 #include <Servo.h>
 #define USE_SERIAL Serial
 
-const int servo_pin = 5;
-const int motor_dir_a = 6;
-const int motor_dir_b = 7;
-const int motor_pwm = 8;
+const int limit_sw_a = 7;
+const int limit_sw_b = 8;
+const int servo_pin = 9;
+// Digishield Motor Driver
+const int motor_dir_a = 2;
+const int motor_pwm_a = 0;
+//const int motor_dir_b = 5; // shared with Serial
+//const int motor_pwm_b = 1; // LED
+
 int last_val;
 
 Servo myservo;
@@ -24,8 +29,11 @@ Servo myservo;
 void setup() {
   pinMode(1, OUTPUT); //LED on Oak
   pinMode(motor_dir_a, OUTPUT);
-  pinMode(motor_dir_b, OUTPUT);
-  pinMode(motor_pwm, OUTPUT);
+  //pinMode(motor_dir_b, OUTPUT);
+  pinMode(motor_pwm_a, OUTPUT);
+  //pinMode(motor_pwm_b, OUTPUT);
+  pinMode(limit_sw_a, INPUT_PULLUP);
+  pinMode(limit_sw_b, INPUT_PULLUP);
   myservo.attach(servo_pin);
   myservo.write(0);
   blink(5,500); // 5 quick blinks at boot
@@ -41,6 +49,7 @@ void setup() {
     USE_SERIAL.flush();
     delay(1000);
   }
+  Particle.publish("ok", "lets go");
 }
 
 void loop() {
@@ -60,29 +69,40 @@ void loop() {
     if (httpCode == 200) {
       String payload = http.getString();
       USE_SERIAL.println(payload);
-      int new_val = payload.toInt();
+      int new_val = payload.substring(2).toInt();
+      USE_SERIAL.print("[HTTP] payload to int:");
+      USE_SERIAL.println(new_val);
       if (new_val != last_val) {
         blink(15,200); // success, flash led 15 times fast
-        char* tempstring;
-        sprintf(tempstring, "%d", new_val);
-        Particle.publish("returned", tempstring);
+        Particle.publish("ok", "new tweet");
+        //char* tempstring;
+        //sprintf(tempstring, "%d", new_val);
+        //Particle.publish("returned", tempstring);
         myservo.write(90);
+        // move motor to limit switch b
         digitalWrite(motor_dir_a, HIGH);
-        digitalWrite(motor_dir_b, LOW);
-        analogWrite(motor_pwm, 200);
+        //digitalWrite(motor_dir_b, LOW);
+        analogWrite(motor_pwm_a, 200);
+        while(digitalRead(limit_sw_b) == LOW) {
+          delay(10);
+        }
+        // stop the motor
+        digitalWrite(motor_dir_a, LOW);
+        //digitalWrite(motor_dir_b, LOW);
+        digitalWrite(motor_pwm_a, LOW);
+        // wait here
         delay(500);
+        // return the motor to limit switch a
         myservo.write(0);
         digitalWrite(motor_dir_a, LOW);
-        digitalWrite(motor_dir_b, LOW);
-        digitalWrite(motor_pwm, LOW);
-        delay(500);
+        //digitalWrite(motor_dir_b, HIGH);
+        analogWrite(motor_pwm_a, 150);
+        while(digitalRead(limit_sw_a) == LOW) {
+          delay(10);
+        }
         digitalWrite(motor_dir_a, LOW);
-        digitalWrite(motor_dir_b, HIGH);
-        analogWrite(motor_pwm, 150);
-        delay(500);
-        digitalWrite(motor_dir_a, LOW);
-        digitalWrite(motor_dir_b, LOW);
-        digitalWrite(motor_pwm, LOW);
+        //digitalWrite(motor_dir_b, LOW);
+        digitalWrite(motor_pwm_a, LOW);
         last_val = new_val;
       }
       else {  
@@ -91,6 +111,7 @@ void loop() {
     }
   } else {
     USE_SERIAL.print("[HTTP] GET... failed, no connection or no HTTP server\n");
+    Particle.publish("ok", "cannot connect to HTTP server");
     blink(5,2000); // error, blink 5 times slow
   }
 
